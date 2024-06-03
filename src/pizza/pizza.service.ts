@@ -4,10 +4,11 @@ import { Model } from 'mongoose';
 import { CreatePizzaDto } from './dto/create-pizza.dto';
 import { UpdatePizzaDto } from './dto/update-pizza.dto';
 import { Pizza } from './schemas/pizza.shcema';
+import { MessagePattern, Payload } from '@nestjs/microservices';
 
 @Injectable()
 export class PizzaService {
-  constructor (@InjectModel(Pizza.name) private pizzaModel: Model<Pizza>) {};
+  constructor(@InjectModel(Pizza.name) private pizzaModel: Model<Pizza>) { };
 
   async create(createPizzaDto: CreatePizzaDto): Promise<Pizza> {
     const newPizza = new this.pizzaModel(createPizzaDto);
@@ -27,7 +28,7 @@ export class PizzaService {
   }
 
   async update(id: string, updatePizzaDto: UpdatePizzaDto): Promise<Pizza> {
-    const updatedPizza = await this.pizzaModel.findByIdAndUpdate(id, updatePizzaDto, {new: true}).exec();
+    const updatedPizza = await this.pizzaModel.findByIdAndUpdate(id, updatePizzaDto, { new: true }).exec();
 
     if (!updatedPizza) {
       throw new NotFoundException('Pizza not found');
@@ -42,5 +43,33 @@ export class PizzaService {
       throw new NotFoundException('Pizza not found');
     }
     return deletedPizza._id.toString() + ' deleted successfully';
+  }
+
+  async handleOrderProcess(@Payload() order: any) {
+    const pizza = await this.findOne(order.pizza_id);
+    let result = {
+      message: '',
+      order,
+      status: '', //accepted, rejected
+    }
+    if (!pizza) {
+      result.message = 'Pizza not fount',
+        result.status = 'rejected';
+      return result;
+    }
+    else {
+      if (pizza.quantity >= order.quantity) {
+        pizza.quantity = pizza.quantity - order.quantity;
+        await this.update(order.pizza_id, { quantity: pizza.quantity });
+        result.message = 'Order Accepted';
+        result.status = 'accepted';
+        return result;
+      }
+      else {
+        result.message = 'Insufficient quantity in stock';
+        result.status = 'rejected';
+        return result;
+      }
+    }
   }
 }
