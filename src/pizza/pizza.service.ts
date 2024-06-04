@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { InjectModel, InjectConnection } from '@nestjs/mongoose';
+import { Model, Connection } from 'mongoose';
 import { CreatePizzaDto } from './dto/create-pizza.dto';
 import { UpdatePizzaDto } from './dto/update-pizza.dto';
 import { Pizza } from './schemas/pizza.shcema';
@@ -12,13 +12,29 @@ export class PizzaService {
   constructor(
     @InjectModel(Pizza.name) private pizzaModel: Model<Pizza>,
     @InjectModel(DataCollection.name) private dataCollectionModel: Model<DataCollection>,
+    @InjectConnection() private connection: Connection,
   ) { };
 
   async create(createPizzaDto: CreatePizzaDto): Promise<Pizza> {
-    const newPizza = new this.pizzaModel(createPizzaDto);
-    const dataCollection = new this.dataCollectionModel(createPizzaDto);
-    dataCollection.save();
-    return newPizza.save();
+    const session = await this.connection.startSession();
+    session.startTransaction();
+
+    try {
+      const newPizza = new this.pizzaModel(createPizzaDto);
+      const dataCollection = new this.dataCollectionModel({ action: 'create', data: newPizza });
+
+      await dataCollection.save({ session });
+      const newPizzaData = await newPizza.save({ session });
+
+      await session.commitTransaction();
+
+      return newPizzaData;
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
   }
 
   async findAll(): Promise<Pizza[]> {
@@ -34,31 +50,54 @@ export class PizzaService {
   }
 
   async update(id: string, updatePizzaDto: UpdatePizzaDto): Promise<Pizza> {
-    const previousData = await this.pizzaModel.findById(id).exec();
-    const updatedPizza = await this.pizzaModel.findByIdAndUpdate(id, updatePizzaDto, { new: true }).exec();
-    const dataCollection = new this.dataCollectionModel({ action: 'update', data: updatedPizza, previousData: previousData });
-    
-    if (!updatedPizza) {
-      throw new NotFoundException('Pizza not found');
+    const session = await this.connection.startSession();
+    session.startTransaction();
+
+    try {
+      const previousData = await this.pizzaModel.findById(id).exec();
+      const updatedPizza = await this.pizzaModel.findByIdAndUpdate(id, updatePizzaDto, { new: true, session }).exec();
+      const dataCollection = new this.dataCollectionModel({ action: 'update', data: updatedPizza, previousData: previousData });
+      if (!updatedPizza) {
+        throw new NotFoundException('Pizza not found');
+      }
+
+      await dataCollection.save({ session });
+
+      await session.commitTransaction();
+
+      return updatedPizza;
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
-
-    dataCollection.save();
-
-    return updatedPizza;
   }
 
   async remove(id: string): Promise<string> {
-    const previousData = await this.pizzaModel.findById(id).exec();
-    const deletedPizza = await this.pizzaModel.findByIdAndDelete(id).exec();
-    const dataCollection = new this.dataCollectionModel({ action: 'delete', data: previousData });
-    
-    if (!deletedPizza) {
-      throw new NotFoundException('Pizza not found');
+    const session = await this.connection.startSession();
+    session.startTransaction();
+
+    try {
+      const previousData = await this.pizzaModel.findById(id).exec();
+      const deletedPizza = await this.pizzaModel.findByIdAndDelete(id, { session }).exec();
+      const dataCollection = new this.dataCollectionModel({ action: 'delete', data: previousData });
+
+      if (!deletedPizza) {
+        throw new NotFoundException('Pizza not found');
+      }
+
+      await dataCollection.save({ session });
+
+      await session.commitTransaction();
+
+      return deletedPizza._id.toString() + ' deleted successfully';
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
     }
-
-    dataCollection.save();
-
-    return deletedPizza._id.toString() + ' deleted successfully';
   }
 
   async handleOrderProcess(@Payload() order: any) {

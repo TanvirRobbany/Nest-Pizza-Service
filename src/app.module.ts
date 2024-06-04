@@ -6,7 +6,7 @@ import { MongooseModule } from '@nestjs/mongoose';
 
 @Module({
   imports: [
-    MongooseModule.forRoot('mongodb://localhost:27017/pizzaDB'),
+    MongooseModule.forRoot('mongodb://localhost:27017/pizzaDB?replicaSet=rs0'),
     PizzaModule
   ],
   controllers: [AppController],
