@@ -4,14 +4,20 @@ import { Model } from 'mongoose';
 import { CreatePizzaDto } from './dto/create-pizza.dto';
 import { UpdatePizzaDto } from './dto/update-pizza.dto';
 import { Pizza } from './schemas/pizza.shcema';
+import { DataCollection } from './schemas/collection.schema';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 
 @Injectable()
 export class PizzaService {
-  constructor(@InjectModel(Pizza.name) private pizzaModel: Model<Pizza>) { };
+  constructor(
+    @InjectModel(Pizza.name) private pizzaModel: Model<Pizza>,
+    @InjectModel(DataCollection.name) private dataCollectionModel: Model<DataCollection>,
+  ) { };
 
   async create(createPizzaDto: CreatePizzaDto): Promise<Pizza> {
     const newPizza = new this.pizzaModel(createPizzaDto);
+    const dataCollection = new this.dataCollectionModel(createPizzaDto);
+    dataCollection.save();
     return newPizza.save();
   }
 
@@ -28,20 +34,30 @@ export class PizzaService {
   }
 
   async update(id: string, updatePizzaDto: UpdatePizzaDto): Promise<Pizza> {
+    const previousData = await this.pizzaModel.findById(id).exec();
     const updatedPizza = await this.pizzaModel.findByIdAndUpdate(id, updatePizzaDto, { new: true }).exec();
-
+    const dataCollection = new this.dataCollectionModel({ action: 'update', data: updatedPizza, previousData: previousData });
+    
     if (!updatedPizza) {
       throw new NotFoundException('Pizza not found');
     }
+
+    dataCollection.save();
 
     return updatedPizza;
   }
 
   async remove(id: string): Promise<string> {
+    const previousData = await this.pizzaModel.findById(id).exec();
     const deletedPizza = await this.pizzaModel.findByIdAndDelete(id).exec();
+    const dataCollection = new this.dataCollectionModel({ action: 'delete', data: previousData });
+    
     if (!deletedPizza) {
       throw new NotFoundException('Pizza not found');
     }
+
+    dataCollection.save();
+
     return deletedPizza._id.toString() + ' deleted successfully';
   }
 
