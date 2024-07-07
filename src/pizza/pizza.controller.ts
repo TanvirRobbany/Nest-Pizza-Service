@@ -3,7 +3,7 @@ import { PizzaService } from './pizza.service';
 import { CreatePizzaDto } from './dto/create-pizza.dto';
 import { UpdatePizzaDto } from './dto/update-pizza.dto';
 import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
-import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiBody } from '@nestjs/swagger';
 
 @ApiTags('pizzas')
 @Controller('pizza')
@@ -47,6 +47,18 @@ export class PizzaController {
   @ApiOperation({ summary: 'Update a pizza' })
   @ApiResponse({ status: 200, description: 'The pizza has been successfully updated.' })
   @ApiResponse({ status: 400, description: 'Bad Request' })
+  @ApiBody({
+    description: 'The new values for the pizza',
+    schema: {
+      example: {
+        name: 'Updated Pizza Name',
+        size: 'large',
+        crust: 'thin',
+        quantity: 2,
+        price: 19.99
+      }
+    }
+  })
   @Patch(':id')
   update(@Param('id') id: string, @Body() updatePizzaDto: UpdatePizzaDto) {
     return this.pizzaService.update(id, updatePizzaDto);
